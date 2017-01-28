@@ -1,3 +1,109 @@
+#!/usr/bin/env python
+ 
+import subprocess
+import sys
+import tempfile
+import shutil
+import os
+import errno
+ 
+# variables for checkstyle
+checkstyle = '/path/to/checkstyle.jar'
+checkstyle_config = 'name_of_config.xml'
+ 
+# implementing check_output for python < 2.7
+if not hasattr(subprocess, 'check_output'):
+    def check_output(*popenargs, **kwargs):
+        if 'stdout' in kwargs:
+            raise ValueError('stdout argument not allowed, it will be overridden.')
+        process = subprocess.Popen(stdout=subprocess.PIPE, *popenargs, **kwargs)
+        output, unused_err = process.communicate()
+        retcode = process.poll()
+        if retcode:
+            cmd = kwargs.get("args")
+            if cmd is None:
+                cmd = popenargs[0]
+            er = subprocess.CalledProcessError(retcode, cmd)
+            er.output = output
+            raise er
+        return output
+    subprocess.check_output = check_output
+ 
+ 
+# helper for calling executables
+def call(*args, **kwargs):
+    return subprocess.check_output(*args, **kwargs).strip()
+ 
+ 
+# helper for calling git
+def call_git(cmd, *args, **kwargs):
+    return call(['git'] + cmd, *args, **kwargs)
+ 
+ 
+# get all new commits from stdin
+def get_commits():
+    commits = {}
+    for line in sys.stdin:
+        old, new, ref = line.strip().split(' ')
+        if old == '0000000000000000000000000000000000000000':
+            old = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
+ 
+        if ref not in commits:
+            commits[ref] = []
+        commits[ref].append({
+            'old': old,
+            'new': new,
+            'files': get_changed_files(old, new)
+            })
+ 
+    return commits
+ 
+ 
+# get a list of changed files between to commits
+def get_changed_files(old, new):
+    return call_git(['diff', '--name-only', old, new]).split('\n')
+ 
+ 
+# get filemode, object type (blob,tree,commit), hash for the given file at the
+# given commit
+def get_change_type(commit, filename):
+    return call_git(['ls-tree', commit, filename]).split('\t')[0].split(' ')
+ 
+ 
+commits = get_commits()
+ 
+# use the latest file commit only
+print "Cleaning up file list..."
+ 
+files = {}
+count = 0
+for ref, data in commits.iteritems():
+    files[ref] = {}
+            if not filename.lower().endswith('.java'): continue
+    for commit in data:
+        for filename in commit['files']:
+            files[ref][filename] = get_change_type(commit['new'], filename)
+    count += len(files[ref])
+ 
+print "%d Files to check in %d branches" % (count, len(files))
+ 
+# create temporary dir and save a copy of the new files
+tempdir = tempfile.mkdtemp('git_hook')
+for ref, files in files.iteritems():
+    for filename, data in files.iteritems():
+        dname = os.path.dirname(filename)
+        bname = os.path.basename(filename)
+        try:
+            os.makedirs(os.path.join(tempdir, dname))
+        except OSError, exc:
+            if exc.errno == errno.EEXIST:  # directory exists already
+                pass
+            else:
+                raise
+ 
+        with open(os.path.join(tempdir, dname, bname), 'w') as fp:
+            fp.write(call_git(['cat-file', data[1], data[2]]))
+ 
 try:
     # call checkstyle and print output
     print call(['java', '-jar', checkstyle, '-c', checkstyle_config, '-r', tempdir])
