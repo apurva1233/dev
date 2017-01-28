@@ -3,6 +3,9 @@ public class HelloWorld
       public static void main(String[] args)
       {       
 	int#
+	char ac;
+	error text
+	int[3];
 	hello world
          System.out.println("This code is in the dev repo");   
          System.out.println("This code is now in qarepo");
