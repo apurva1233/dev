@@ -1,0 +1,9 @@
+try:
+    # call checkstyle and print output
+    print call(['java', '-jar', checkstyle, '-c', checkstyle_config, '-r', tempdir])
+except subprocess.CalledProcessError, ex:
+    print ex.output  # print checkstyle messages
+    exit(1)
+finally:
+    # remove temporary directory
+    shutil.rmtree(tempdir)
